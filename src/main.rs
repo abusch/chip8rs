@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::io::Write;
 
 struct Chip8 {
     pc: u16,
@@ -7,13 +6,15 @@ struct Chip8 {
     regs: Registers,
     gfx: Gfx,
     stack: Stack,
+    delay_timer: u8,
+    sound_timer: u8,
 }
 
 impl Chip8 {
     pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let rom = std::fs::read(path)?;
         let mut ram = Ram::default();
-        ram.load(&rom)?;
+        ram.load(&rom);
 
         Ok(Self {
             pc: 0x200,
@@ -21,6 +22,8 @@ impl Chip8 {
             regs: Registers::default(),
             gfx: Gfx::new(),
             stack: Stack::new(),
+            delay_timer: 0,
+            sound_timer: 0,
         })
     }
 
@@ -167,6 +170,36 @@ impl Chip8 {
                 self.draw_sprite(self.regs[x], self.regs[y], n);
                 self.pc += 2;
             }
+            0xF000 => {
+                let x = ((opcode & 0x0F00) >> 8) as u8;
+                let op = opcode & 0x00FF;
+
+                match op {
+                    0x07 => {
+                        self.regs[x] = self.delay_timer;
+                        self.pc += 2;
+                    }
+                    0x0A => {
+                        todo!()
+                    }
+                    0x15 => {
+                        self.delay_timer = self.regs[x];
+                        self.pc += 2;
+                    }
+                    0x18 => {
+                        self.sound_timer = self.regs[x];
+                        self.pc += 2;
+                    }
+                    0x1E => {
+                        self.regs.I += self.regs[x] as u16;
+                        self.pc += 2;
+                    }
+                    0x29 => {
+
+                    }
+                    _ => panic!("unknown opcode {:#x}", opcode),
+                }
+            }
             _ => panic!("unknown opcode {:#x}", opcode),
         }
     }
@@ -184,15 +217,17 @@ impl Chip8 {
 struct Ram(Box<[u8]>);
 
 impl Ram {
-    pub fn load(&mut self, rom: &[u8]) -> std::io::Result<()> {
-        let mut rom_space = &mut self.0[0x0200..];
+    pub fn load(&mut self, rom: &[u8]) {
+        let rom_size = rom.len();
+        let rom_space = &mut self.0[0x0200..0x0200 + rom_size];
         println!("Writing {} bytes into ram", rom.len());
-        rom_space.write_all(rom)
+        rom_space.copy_from_slice(rom);
+        // rom_space.write_all(rom)
     }
 
-    /// Return the data for the sprite at address `addr` with height `height` (width is always 8).
+    /// Return the data for the sprite at address `addr` with height `height`.
     pub fn get_sprite(&self, addr: u16, height: u8) -> &[u8] {
-        &self.0[(addr as usize)..((addr + 8 * height as u16) as usize)]
+        &self.0[(addr as usize)..((addr + height as u16) as usize)]
     }
 }
 
@@ -311,16 +346,17 @@ impl Gfx {
         let y = y % Self::H;
 
         for dy in 0..height {
+            let sprite_byte = data[dy as usize];
             for dx in 0..8 {
-                let v = data[(dy * 8 + dx) as usize];
-                self.set(x + dx, y + dy, v);
+                let bit = sprite_byte & (0x80 >> dx);
+                self.set(x + dx, y + dy, bit);
             }
         }
     }
 
     pub fn set(&mut self, x:u8, y: u8, v: u8) {
         if x < Self::W && y < Self::H {
-            self.0[(y as u16 * Self::W as u16 + x as u16) as usize] = v;
+            self.0[(y as u16 * Self::W as u16 + x as u16) as usize] ^= v;
         }
     }
 }
