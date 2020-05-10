@@ -170,6 +170,21 @@ impl Chip8 {
                 self.draw_sprite(self.regs[x], self.regs[y], n);
                 self.pc += 2;
             }
+            0xE000 => {
+                let x = ((opcode & 0x0F00) >> 8) as u8;
+                let op = opcode & 0x00FF;
+
+                match op {
+                    0x9E => {
+                        // TODO
+                    }
+                    0xA1 => {
+                        // TODO
+                    }
+                    _ => panic!("Unkown opcode {:#x}", opcode),
+                }
+                self.pc += 2;
+            }
             0xF000 => {
                 let x = ((opcode & 0x0F00) >> 8) as u8;
                 let op = opcode & 0x00FF;
