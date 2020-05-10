@@ -1,5 +1,8 @@
 use std::path::Path;
 
+use log::{debug, info};
+use minifb::{Key, Window, WindowOptions, Scale, ScaleMode};
+
 struct Chip8 {
     pc: u16,
     ram: Ram,
@@ -11,13 +14,17 @@ struct Chip8 {
 }
 
 impl Chip8 {
+    const FONT_DATA_ADDR: u16 = 0x0000;
+    const PROG_ADDR: u16 = 0x0200;
+
     pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let rom = std::fs::read(path)?;
         let mut ram = Ram::default();
-        ram.load(&rom);
+        ram.load_at(Self::FONT_DATA_ADDR, &FONT_DATA[..]);
+        ram.load_at(Self::PROG_ADDR, &rom);
 
         Ok(Self {
-            pc: 0x200,
+            pc: Self::PROG_ADDR,
             ram,
             regs: Registers::default(),
             gfx: Gfx::new(),
@@ -29,7 +36,7 @@ impl Chip8 {
 
     pub fn emulate_cycle(&mut self) {
         let opcode = self.fetch_opcode();
-        println!("Decoding opcode {:#x} at pc={:#x}", opcode, self.pc);
+        debug!("Decoding opcode {:#x} at pc={:#x}", opcode, self.pc);
 
         match opcode & 0xF000 {
             0x0000 => {
@@ -192,31 +199,32 @@ impl Chip8 {
                 match op {
                     0x07 => {
                         self.regs[x] = self.delay_timer;
-                        self.pc += 2;
                     }
                     0x0A => {
                         todo!()
                     }
                     0x15 => {
                         self.delay_timer = self.regs[x];
-                        self.pc += 2;
                     }
                     0x18 => {
                         self.sound_timer = self.regs[x];
-                        self.pc += 2;
                     }
                     0x1E => {
                         self.regs.I += self.regs[x] as u16;
-                        self.pc += 2;
                     }
                     0x29 => {
-
+                        self.regs.I = Self::FONT_DATA_ADDR + self.regs[x] as u16 * 5;
                     }
                     _ => panic!("unknown opcode {:#x}", opcode),
                 }
+                self.pc += 2;
             }
             _ => panic!("unknown opcode {:#x}", opcode),
         }
+    }
+
+    pub fn gfx_buffer(&self) -> &[u8] {
+        &self.gfx.0[..]
     }
 
     fn fetch_opcode(&self) -> u16 {
@@ -232,12 +240,13 @@ impl Chip8 {
 struct Ram(Box<[u8]>);
 
 impl Ram {
-    pub fn load(&mut self, rom: &[u8]) {
-        let rom_size = rom.len();
-        let rom_space = &mut self.0[0x0200..0x0200 + rom_size];
-        println!("Writing {} bytes into ram", rom.len());
-        rom_space.copy_from_slice(rom);
-        // rom_space.write_all(rom)
+    /// Load the content of `data` into RAM at address `addr`.
+    pub fn load_at(&mut self, addr: u16, data: &[u8]) {
+        let addr = addr as usize;
+        let data_size = data.len();
+        let dest = &mut self.0[addr..addr + data_size];
+        debug!("Writing {} bytes into ram", data.len());
+        dest.copy_from_slice(data);
     }
 
     /// Return the data for the sprite at address `addr` with height `height`.
@@ -404,12 +413,64 @@ impl Stack {
 }
 
 fn main() {
+    const WIDTH: usize = 64;
+    const HEIGHT: usize = 32;
+
+    env_logger::try_init().unwrap();
+
     let args = std::env::args().collect::<Vec<_>>();
     let rom = args.get(1).expect("missing rom file");
-    println!("loading rom {}", rom);
+    info!("loading rom {}", rom);
     let mut chip8 = Chip8::new(rom).unwrap();
 
-    loop {
+    let mut buffer = vec![0u32; WIDTH * HEIGHT];
+    let mut window = Window::new(
+        "Test - ESC to exit",
+        WIDTH,
+        HEIGHT,
+        WindowOptions {
+            borderless: false,
+            title: true,
+            resize: false,
+            scale: Scale::X32,
+            scale_mode: ScaleMode::Stretch,
+            topmost: false,
+        },
+    )
+    .unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
+
+    // Limit to max ~60 fps update rate
+    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+
+    while window.is_open() && !window.is_key_down(Key::Escape) {
         chip8.emulate_cycle();
+        buffer.iter_mut().zip(chip8.gfx_buffer().iter())
+            .for_each(|(b, v)| *b = if *v == 0 { 0u32} else { 0xFFFFFFFF });
+
+        // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+        window
+            .update_with_buffer(&buffer, WIDTH, HEIGHT)
+            .unwrap();
     }
 }
+
+const FONT_DATA: [u8; 5 * 16] = [
+0xF0, 0x90, 0x90, 0x90, 0xF0,
+0x20, 0x60, 0x20, 0x20, 0x70,
+0xF0, 0x10, 0xF0, 0x80, 0xF0,
+0xF0, 0x10, 0xF0, 0x10, 0xF0,
+0x90, 0x90, 0xF0, 0x10, 0x10,
+0xF0, 0x80, 0xF0, 0x10, 0xF0,
+0xF0, 0x80, 0xF0, 0x90, 0xF0,
+0xF0, 0x10, 0x20, 0x40, 0x40,
+0xF0, 0x90, 0xF0, 0x90, 0xF0,
+0xF0, 0x90, 0xF0, 0x10, 0xF0,
+0xF0, 0x90, 0xF0, 0x90, 0x90,
+0xE0, 0x90, 0xE0, 0x90, 0xE0,
+0xF0, 0x80, 0x80, 0x80, 0xF0,
+0xE0, 0x90, 0x90, 0x90, 0xE0,
+0xF0, 0x80, 0xF0, 0x80, 0xF0,
+0xF0, 0x80, 0xF0, 0x80, 0x80,
+];
