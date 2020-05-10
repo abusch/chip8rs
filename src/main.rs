@@ -11,10 +11,11 @@ struct Chip8 {
     stack: Stack,
     delay_timer: u8,
     sound_timer: u8,
+    keys: [bool; 16],
 }
 
 impl Chip8 {
-    const FONT_DATA_ADDR: u16 = 0x0000;
+    const FONT_DATA_ADDR: u16 = 0x0050;
     const PROG_ADDR: u16 = 0x0200;
 
     pub fn new<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
@@ -31,12 +32,19 @@ impl Chip8 {
             stack: Stack::new(),
             delay_timer: 0,
             sound_timer: 0,
+            keys: [false; 16],
         })
     }
 
+    fn tick(&mut self) {
+        self.delay_timer = self.delay_timer.saturating_sub(1);
+        self.sound_timer = self.sound_timer.saturating_sub(1);
+    }
+
     pub fn emulate_cycle(&mut self) {
+        self.tick();
         let opcode = self.fetch_opcode();
-        debug!("Decoding opcode {:#x} at pc={:#x}", opcode, self.pc);
+        debug!("Decoding opcode {:#0X} at pc={:#0X}", opcode, self.pc);
 
         match opcode & 0xF000 {
             0x0000 => {
@@ -47,6 +55,8 @@ impl Chip8 {
                 } else if opcode == 0x00EE {
                     // Return from subroutine
                     self.pc = self.stack.pop();
+                    debug!("Returning from subroutine to {:#X}", self.pc);
+                    self.pc += 2;
                 } else {
                     // Call RCA1802 program
                     panic!("unimplemented opcode {:#x}", opcode);
@@ -60,6 +70,7 @@ impl Chip8 {
             0x2000 => {
                 // Call subroutine
                 let addr = opcode & 0x0FFF;
+                debug!("Calling subroutine at {:#X}", addr);
                 self.stack.push(self.pc);
                 self.pc = addr;
             }
@@ -183,14 +194,23 @@ impl Chip8 {
 
                 match op {
                     0x9E => {
-                        // TODO
+                        if self.keys[self.regs[x] as usize] {
+                            debug!("Key {} pressed", self.regs[x]);
+                            self.pc += 4;
+                        } else {
+                            self.pc += 2;
+                        }
                     }
                     0xA1 => {
-                        // TODO
+                        if !self.keys[self.regs[x] as usize] {
+                            self.pc += 4;
+                        } else {
+                            debug!("Key {} pressed", self.regs[x]);
+                            self.pc += 2;
+                        }
                     }
                     _ => panic!("Unkown opcode {:#x}", opcode),
                 }
-                self.pc += 2;
             }
             0xF000 => {
                 let x = ((opcode & 0x0F00) >> 8) as u8;
@@ -201,7 +221,13 @@ impl Chip8 {
                         self.regs[x] = self.delay_timer;
                     }
                     0x0A => {
-                        todo!()
+                        if let Some(idx) = self.keys.iter().position(|v| *v) {
+                            self.regs[x] = idx as u8;
+                            self.pc += 2;
+                        } else {
+                            // do not increment PC: the program is effectively halted until a key
+                            // is pressed.
+                        }
                     }
                     0x15 => {
                         self.delay_timer = self.regs[x];
@@ -215,6 +241,31 @@ impl Chip8 {
                     0x29 => {
                         self.regs.I = Self::FONT_DATA_ADDR + self.regs[x] as u16 * 5;
                     }
+                    0x33 => {
+                        // BCD
+                        let mut v = self.regs[x];
+                        let units = v % 10;
+                        v /= 10;
+                        let tens = v % 10;
+                        v /= 10;
+                        let hundreds = v % 10;
+                        self.ram[self.regs.I] = hundreds;
+                        self.ram[self.regs.I + 1] = tens;
+                        self.ram[self.regs.I + 2] = units;
+
+                    }
+                    0x55 => {
+                        for i in 0..=x {
+                            self.ram[self.regs.I] = self.regs[i];
+                            self.regs.I += 1;
+                        }
+                    }
+                    0x65 => {
+                        for i in 0..=x {
+                            self.regs[i] = self.ram[self.regs.I];
+                            self.regs.I += 1;
+                        }
+                    }
                     _ => panic!("unknown opcode {:#x}", opcode),
                 }
                 self.pc += 2;
@@ -225,6 +276,10 @@ impl Chip8 {
 
     pub fn gfx_buffer(&self) -> &[u8] {
         &self.gfx.0[..]
+    }
+
+    pub fn set_key(&mut self, key: u8, is_down: bool) {
+        self.keys[key as usize] = is_down;
     }
 
     fn fetch_opcode(&self) -> u16 {
@@ -266,6 +321,13 @@ impl std::ops::Index<u16> for Ram {
 
     fn index(&self, idx: u16) -> &u8 {
         &self.0[idx as usize]
+    }
+}
+
+impl std::ops::IndexMut<u16> for Ram {
+
+    fn index_mut(&mut self, idx: u16) -> &mut u8 {
+        &mut self.0[idx as usize]
     }
 }
 
@@ -442,9 +504,12 @@ fn main() {
     });
 
     // Limit to max ~60 fps update rate
-    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+    // window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        for (i, key) in KEYS.iter().enumerate() {
+            chip8.set_key(i as u8, window.is_key_down(*key));
+        }
         chip8.emulate_cycle();
         buffer.iter_mut().zip(chip8.gfx_buffer().iter())
             .for_each(|(b, v)| *b = if *v == 0 { 0u32} else { 0xFFFFFFFF });
@@ -473,4 +538,8 @@ const FONT_DATA: [u8; 5 * 16] = [
 0xE0, 0x90, 0x90, 0x90, 0xE0,
 0xF0, 0x80, 0xF0, 0x80, 0xF0,
 0xF0, 0x80, 0xF0, 0x80, 0x80,
+];
+
+const KEYS: [Key; 16] = [
+    Key::Key1, Key::Key2, Key::Key3, Key::Q, Key::W, Key::E, Key::A, Key::S, Key::D, Key::X, Key::Z, Key::C, Key::Key4, Key::R, Key::F, Key::V
 ];
