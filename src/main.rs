@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use clap::{Arg, App};
 use log::{debug, info};
 use minifb::{Key, Window, WindowOptions, Scale, ScaleMode};
 
@@ -480,8 +481,24 @@ fn main() {
 
     env_logger::try_init().unwrap();
 
-    let args = std::env::args().collect::<Vec<_>>();
-    let rom = args.get(1).expect("missing rom file");
+    let app = App::new("chip8rs")
+        .author("Antoine Busch")
+        .version("0.1")
+        .arg(Arg::with_name("ROM").index(1).required(true))
+        .arg(Arg::with_name("scale").required(false).default_value("4").possible_values(&["1", "2", "4", "8", "16", "32"]).short("s").long("scale"))
+        .get_matches();
+
+    let rom = app.value_of("ROM").expect("Missing ROM file");
+    let scale = match app.value_of("scale").unwrap() {
+        "1" => Scale::X1,
+        "2" => Scale::X2,
+        "4" => Scale::X4,
+        "8" => Scale::X8,
+        "16" => Scale::X16,
+        "32" => Scale::X32,
+        _ => panic!("Invalid scale factor"),
+    };
+
     info!("loading rom {}", rom);
     let mut chip8 = Chip8::new(rom).unwrap();
 
@@ -494,7 +511,7 @@ fn main() {
             borderless: false,
             title: true,
             resize: false,
-            scale: Scale::X32,
+            scale,
             scale_mode: ScaleMode::Stretch,
             topmost: false,
         },
