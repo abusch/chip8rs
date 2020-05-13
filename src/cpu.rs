@@ -24,7 +24,6 @@ impl Cpu {
     }
 
     pub fn emulate_cycle(&mut self, interconnect: &mut Interconnect) {
-        interconnect.tick();
         let opcode = interconnect.fetch_opcode(self.pc);
         debug!("Decoding opcode {:#0X} at pc={:#0X}", opcode, self.pc);
 

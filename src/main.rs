@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use clap::{App, Arg};
 use log::info;
@@ -40,7 +40,7 @@ impl Chip8 {
         })
     }
 
-    pub fn gfx_buffer(&self) -> &[u8] {
+    pub fn gfx_buffer(&mut self) -> &[u8] {
         self.interconnect.gfx.get_frame()
     }
 
@@ -106,20 +106,35 @@ fn main() {
     });
 
     // Limit to max ~60 fps update rate
-    // window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+    window.limit_update_rate(None);
 
+    let mut tick = 0;
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        tick += 1;
+        if tick > 16 {
+            // If ~16ms have elapsed (i.e 60Hz), send a tick to decrement the timers
+            chip8.interconnect.tick();
+            tick = 0;
+        }
+        chip8.step();
+
+        if chip8.interconnect.gfx.dirty {
+            buffer
+                .iter_mut()
+                .zip(chip8.gfx_buffer().iter())
+                .for_each(|(b, v)| *b = if *v == 0 { 0u32 } else { 0xFFFFFFFF });
+
+            // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+            window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+        } else {
+            window.update();
+        }
         for (i, key) in KEYS.iter().enumerate() {
             chip8.set_key(i as u8, window.is_key_down(*key));
         }
-        chip8.step();
-        buffer
-            .iter_mut()
-            .zip(chip8.gfx_buffer().iter())
-            .for_each(|(b, v)| *b = if *v == 0 { 0u32 } else { 0xFFFFFFFF });
 
-        // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-        window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+        // sleep for 1ms i.e. run about 1 instruction per millisecond
+        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -132,6 +147,7 @@ const FONT_DATA: [u8; 5 * 16] = [
 ];
 
 const KEYS: [Key; 16] = [
+    Key::X,
     Key::Key1,
     Key::Key2,
     Key::Key3,
@@ -141,7 +157,6 @@ const KEYS: [Key; 16] = [
     Key::A,
     Key::S,
     Key::D,
-    Key::X,
     Key::Z,
     Key::C,
     Key::Key4,
