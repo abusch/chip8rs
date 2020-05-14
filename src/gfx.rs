@@ -24,23 +24,37 @@ impl Gfx {
         self.dirty = true;
     }
 
-    pub fn draw_sprite(&mut self, x: u8, y: u8, height: u8, data: &[u8]) {
+    /// Draw the sprite in `data` at coordinates (x, y) with height `height`.
+    ///
+    /// Return `true` if any set pixel was unset in the process.
+    pub fn draw_sprite(&mut self, x: u8, y: u8, height: u8, data: &[u8]) -> bool {
         let x = x % W;
         let y = y % H;
+
+        let mut collision = false;
 
         for dy in 0..height {
             let sprite_byte = data[dy as usize];
             for dx in 0..8 {
                 let bit = sprite_byte & (0x80 >> dx);
-                self.set(x + dx, y + dy, bit);
+                collision |= self.set(x + dx, y + dy, bit);
             }
         }
         self.dirty = true;
+
+        collision
     }
 
-    pub fn set(&mut self, x: u8, y: u8, v: u8) {
+    pub fn set(&mut self, x: u8, y: u8, v: u8) -> bool {
         if x < W && y < H {
-            self.buf[(y as u16 * W as u16 + x as u16) as usize] ^= v;
+            let pixel_index = (y as u16 * W as u16 + x as u16) as usize;
+            let old_pixel = self.buf[pixel_index];
+            let new_pixel = old_pixel ^ v;
+            self.buf[pixel_index] = new_pixel;
+            // Return true if a set pixel was changed to unset
+            old_pixel != 0 && new_pixel == 0
+        } else {
+            false
         }
     }
 

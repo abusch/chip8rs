@@ -28,8 +28,8 @@ impl Interconnect {
     }
 
     /// Draw sprite located at address `addr` at coordinates (vx, vy) with height `n`
-    pub fn draw_sprite(&mut self, addr: u16, vx: u8, vy: u8, n: u8) {
+    pub fn draw_sprite(&mut self, addr: u16, vx: u8, vy: u8, n: u8) -> bool {
         self.gfx
-            .draw_sprite(vx, vy, n, &self.ram.get_sprite(addr, n));
+            .draw_sprite(vx, vy, n, &self.ram.get_sprite(addr, n))
     }
 }

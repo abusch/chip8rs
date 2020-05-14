@@ -166,7 +166,9 @@ impl Cpu {
                 let x = ((opcode & 0x0F00) >> 8) as u8;
                 let y = ((opcode & 0x00F0) >> 4) as u8;
                 let n = (opcode & 0x000F) as u8;
-                interconnect.draw_sprite(self.regs.I, self.regs[x], self.regs[y], n);
+                let collision = interconnect.draw_sprite(self.regs.I, self.regs[x], self.regs[y], n);
+                // collision -> set the CF flag
+                self.regs.set_carry(collision);
                 self.pc += 2;
             }
             0xE000 => {
