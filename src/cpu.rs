@@ -162,6 +162,13 @@ impl Cpu {
                 self.regs.I = addr;
                 self.pc += 2;
             }
+            0xC000 => {
+                let x = ((opcode & 0x0F00) >> 8) as u8;
+                let n = (opcode & 0x00FF) as u8;
+
+                self.regs[x] = rand::random::<u8>() & n;
+                self.pc += 2;
+            }
             0xD000 => {
                 let x = ((opcode & 0x0F00) >> 8) as u8;
                 let y = ((opcode & 0x00F0) >> 4) as u8;

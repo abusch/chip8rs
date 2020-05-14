@@ -76,6 +76,7 @@ dependencies = [
  "env_logger",
  "log",
  "minifb",
+ "rand 0.7.3",
 ]
 
 [[package]]
