@@ -37,7 +37,12 @@ impl Gfx {
             let sprite_byte = data[dy as usize];
             for dx in 0..8 {
                 let bit = sprite_byte & (0x80 >> dx);
-                collision |= self.set(x + dx, y + dy, bit);
+                let pixel = if bit == 0 {
+                    0
+                } else {
+                    0xFF
+                };
+                collision |= self.set(x + dx, y + dy, pixel);
             }
         }
         self.dirty = true;
@@ -52,7 +57,7 @@ impl Gfx {
             let new_pixel = old_pixel ^ v;
             self.buf[pixel_index] = new_pixel;
             // Return true if a set pixel was changed to unset
-            old_pixel != 0 && new_pixel == 0
+            old_pixel != 0 && v != 0
         } else {
             false
         }

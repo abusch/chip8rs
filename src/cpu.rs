@@ -1,4 +1,4 @@
-use log::debug;
+use log::{warn, debug};
 
 use crate::config;
 use crate::Interconnect;
@@ -25,7 +25,27 @@ impl Cpu {
 
     pub fn emulate_cycle(&mut self, interconnect: &mut Interconnect) {
         let opcode = interconnect.fetch_opcode(self.pc);
-        debug!("Decoding opcode {:#0X} at pc={:#0X}", opcode, self.pc);
+        debug!("op={:#04x}, pc={:#04x}, I={:04x}, regs=[{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},{:x},]",
+               opcode,
+               self.pc,
+               self.regs.I,
+               self.regs[0x0],
+               self.regs[0x1],
+               self.regs[0x2],
+               self.regs[0x3],
+               self.regs[0x4],
+               self.regs[0x5],
+               self.regs[0x6],
+               self.regs[0x7],
+               self.regs[0x8],
+               self.regs[0x9],
+               self.regs[0xa],
+               self.regs[0xb],
+               self.regs[0xc],
+               self.regs[0xd],
+               self.regs[0xe],
+               self.regs[0xf],
+               );
 
         match opcode & 0xF000 {
             0x0000 => {
@@ -36,11 +56,12 @@ impl Cpu {
                 } else if opcode == 0x00EE {
                     // Return from subroutine
                     self.pc = self.stack.pop();
-                    debug!("Returning from subroutine to {:#X}", self.pc);
+                    debug!("Returning from subroutine to {:#04x}", self.pc);
                     self.pc += 2;
                 } else {
                     // Call RCA1802 program
-                    panic!("unimplemented opcode {:#x}", opcode);
+                    warn!("unimplemented opcode {:#04x}", opcode);
+                    self.pc += 2;
                 }
             }
             0x1000 => {
@@ -51,7 +72,7 @@ impl Cpu {
             0x2000 => {
                 // Call subroutine
                 let addr = opcode & 0x0FFF;
-                debug!("Calling subroutine at {:#X}", addr);
+                debug!("Calling subroutine at {:#04x}", addr);
                 self.stack.push(self.pc);
                 self.pc = addr;
             }
@@ -118,11 +139,11 @@ impl Cpu {
                     5 => {
                         let (diff, overflow) = self.regs[x].overflowing_sub(self.regs[y]);
                         self.regs[x] = diff;
-                        self.regs.set_carry(overflow);
+                        self.regs.set_carry(!overflow);
                     }
                     6 => {
                         let lsb = self.regs[x] & 0x01;
-                        self.regs[x] = self.regs[y] >> 1;
+                        self.regs[x] = self.regs[x] >> 1;
                         if lsb == 1 {
                             self.regs.set_carry(true);
                         } else {
@@ -132,18 +153,18 @@ impl Cpu {
                     7 => {
                         let (diff, overflow) = self.regs[y].overflowing_sub(self.regs[x]);
                         self.regs[x] = diff;
-                        self.regs.set_carry(overflow);
+                        self.regs.set_carry(!overflow);
                     }
                     0x0E => {
                         let msb = self.regs[x] & 0x80;
-                        self.regs[x] = self.regs[y] << 1;
+                        self.regs[x] = self.regs[x] << 1;
                         if msb == 1 {
                             self.regs.set_carry(true);
                         } else {
                             self.regs.set_carry(false);
                         }
                     }
-                    _ => panic!("invalid opcode {:#x}", opcode),
+                    _ => panic!("invalid opcode {:#04x}", opcode),
                 }
                 self.pc += 2;
             }
@@ -161,6 +182,10 @@ impl Cpu {
                 let addr = opcode & 0x0FFF;
                 self.regs.I = addr;
                 self.pc += 2;
+            }
+            0xB000 => {
+                let addr = opcode & 0x0FFF;
+                self.pc = addr + self.regs[0] as u16;
             }
             0xC000 => {
                 let x = ((opcode & 0x0F00) >> 8) as u8;
@@ -212,12 +237,16 @@ impl Cpu {
                         self.regs[x] = interconnect.delay_timer;
                     }
                     0x0A => {
+                        // find the first key that's pressed
                         if let Some(idx) = interconnect.keys.iter().position(|v| *v) {
                             self.regs[x] = idx as u8;
-                            self.pc += 2;
+                            // reset the key we just read so we don't read it again in the next
+                            // cycle
+                            interconnect.keys[idx] = false;
                         } else {
                             // do not increment PC: the program is effectively halted until a key
                             // is pressed.
+                            self.pc -= 2;
                         }
                     }
                     0x15 => {
@@ -256,11 +285,11 @@ impl Cpu {
                             self.regs.I += 1;
                         }
                     }
-                    _ => panic!("unknown opcode {:#x}", opcode),
+                    _ => panic!("unknown opcode {:#04x}", opcode),
                 }
                 self.pc += 2;
             }
-            _ => panic!("unknown opcode {:#x}", opcode),
+            _ => panic!("unknown opcode {:#04x}", opcode),
         }
     }
 }
