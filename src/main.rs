@@ -1,5 +1,6 @@
 use std::{path::Path, time::Duration};
 
+use anyhow::{Result, Context, bail};
 use clap::{App, Arg};
 use log::info;
 use minifb::{Key, Scale, ScaleMode, Window, WindowOptions};
@@ -53,11 +54,11 @@ impl Chip8 {
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
     const WIDTH: usize = 64;
     const HEIGHT: usize = 32;
 
-    env_logger::try_init().unwrap();
+    env_logger::try_init()?;
 
     let app = App::new("chip8rs")
         .author("Antoine Busch")
@@ -74,18 +75,18 @@ fn main() {
         .get_matches();
 
     let rom = app.value_of("ROM").expect("Missing ROM file");
-    let scale = match app.value_of("scale").unwrap() {
+    let scale = match app.value_of("scale").context("Missing scale")? {
         "1" => Scale::X1,
         "2" => Scale::X2,
         "4" => Scale::X4,
         "8" => Scale::X8,
         "16" => Scale::X16,
         "32" => Scale::X32,
-        _ => panic!("Invalid scale factor"),
+        _ => bail!("Invalid scale factor"),
     };
 
     info!("loading rom {}", rom);
-    let mut chip8 = Chip8::new(rom).unwrap();
+    let mut chip8 = Chip8::new(rom)?;
 
     let mut buffer = vec![0u32; WIDTH * HEIGHT];
     let mut window = Window::new(
@@ -101,10 +102,7 @@ fn main() {
             topmost: false,
             ..WindowOptions::default()
         },
-    )
-    .unwrap_or_else(|e| {
-        panic!("{}", e);
-    });
+    )?;
 
     // Limit to max ~60 fps update rate
     window.limit_update_rate(None);
@@ -126,7 +124,7 @@ fn main() {
                 .for_each(|(b, v)| *b = if *v == 0 { 0u32 } else { 0xFFFFFFFF });
 
             // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-            window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+            window.update_with_buffer(&buffer, WIDTH, HEIGHT)?;
         } else {
             window.update();
         }
@@ -137,6 +135,8 @@ fn main() {
         // sleep for 1ms i.e. run about 1 instruction per millisecond
         std::thread::sleep(Duration::from_millis(1));
     }
+
+    Ok(())
 }
 
 const KEYS: [Key; 16] = [
