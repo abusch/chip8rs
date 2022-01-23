@@ -52,17 +52,15 @@ impl Cpu {
                 if opcode == 0x00E0 {
                     // Clear the screen
                     interconnect.gfx.clear();
-                    self.pc += 2;
                 } else if opcode == 0x00EE {
                     // Return from subroutine
                     self.pc = self.stack.pop();
                     debug!("Returning from subroutine to {:#04x}", self.pc);
-                    self.pc += 2;
                 } else {
                     // Call RCA1802 program
                     warn!("unimplemented opcode {:#04x}", opcode);
-                    self.pc += 2;
                 }
+                self.pc += 2;
             }
             0x1000 => {
                 // jump
@@ -128,9 +126,9 @@ impl Cpu {
                 match op {
                     // Set Vx to Vy
                     0 => self.regs[x] = self.regs[y],
-                    1 => self.regs[x] = self.regs[x] | self.regs[y],
-                    2 => self.regs[x] = self.regs[x] & self.regs[y],
-                    3 => self.regs[x] = self.regs[x] ^ self.regs[y],
+                    1 => self.regs[x] |= self.regs[y],
+                    2 => self.regs[x] &= self.regs[y],
+                    3 => self.regs[x] ^= self.regs[y],
                     4 => {
                         let (sum, overflow) = self.regs[x].overflowing_add(self.regs[y]);
                         self.regs[x] = sum;
@@ -143,7 +141,7 @@ impl Cpu {
                     }
                     6 => {
                         let lsb = self.regs[x] & 0x01;
-                        self.regs[x] = self.regs[x] >> 1;
+                        self.regs[x] >>= 1;
                         if lsb == 1 {
                             self.regs.set_carry(true);
                         } else {
@@ -157,7 +155,7 @@ impl Cpu {
                     }
                     0x0E => {
                         let msb = self.regs[x] & 0x80;
-                        self.regs[x] = self.regs[x] << 1;
+                        self.regs[x] <<= 1;
                         if msb == 1 {
                             self.regs.set_carry(true);
                         } else {

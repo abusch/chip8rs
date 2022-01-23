@@ -62,13 +62,13 @@ fn main() {
     let app = App::new("chip8rs")
         .author("Antoine Busch")
         .version("0.1")
-        .arg(Arg::with_name("ROM").index(1).required(true))
+        .arg(Arg::new("ROM").index(1).required(true))
         .arg(
-            Arg::with_name("scale")
+            Arg::new("scale")
                 .required(false)
                 .default_value("4")
                 .possible_values(&["1", "2", "4", "8", "16", "32"])
-                .short("s")
+                .short('s')
                 .long("scale"),
         )
         .get_matches();
@@ -99,6 +99,7 @@ fn main() {
             scale,
             scale_mode: ScaleMode::Stretch,
             topmost: false,
+            ..WindowOptions::default()
         },
     )
     .unwrap_or_else(|e| {
