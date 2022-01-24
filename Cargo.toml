@@ -9,7 +9,10 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 clap="3"
-minifb = "0.20"
-log = "0.4.0"
 env_logger = "0.9"
+game-loop = { version="0.8", features = ["window"] }
+log = "0.4.0"
+pixels="0.9"
 rand="0.8"
+winit="0.26"
+winit_input_helper="0.11"
